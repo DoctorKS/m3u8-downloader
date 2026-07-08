@@ -52,8 +52,10 @@ class M3U8Downloader(tk.Tk):
         self.worker: threading.Thread | None = None
         self.cancel_requested = threading.Event()
         self.current_job_id: str | None = None
+        self.text_entries: list[ttk.Entry] = []
 
         self._build_ui()
+        self._install_clipboard_shortcuts()
         self._add_job(silent=True)
         self.after(100, self._handle_events)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -71,14 +73,17 @@ class M3U8Downloader(tk.Tk):
         ttk.Label(outer, text="ลิงก์เสียง (.m3u8)").grid(row=1, column=0, sticky="w", pady=5)
         self.audio_entry = ttk.Entry(outer, textvariable=self.audio_url)
         self.audio_entry.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(12, 0), pady=5)
+        self.text_entries.append(self.audio_entry)
 
         ttk.Label(outer, text="ลิงก์วิดีโอ (.m3u8)").grid(row=2, column=0, sticky="w", pady=5)
         self.video_entry = ttk.Entry(outer, textvariable=self.video_url)
         self.video_entry.grid(row=2, column=1, columnspan=2, sticky="ew", padx=(12, 0), pady=5)
+        self.text_entries.append(self.video_entry)
 
         ttk.Label(outer, text="บันทึกเป็น").grid(row=3, column=0, sticky="w", pady=5)
         self.output_entry = ttk.Entry(outer, textvariable=self.output_path)
         self.output_entry.grid(row=3, column=1, sticky="ew", padx=(12, 8), pady=5)
+        self.text_entries.append(self.output_entry)
         self.browse_button = ttk.Button(outer, text="เลือกไฟล์...", command=self._choose_output)
         self.browse_button.grid(row=3, column=2, sticky="ew", pady=5)
 
@@ -140,6 +145,104 @@ class M3U8Downloader(tk.Tk):
         self.download_button = ttk.Button(action_row, text="เริ่มดาวน์โหลดตามคิว", command=self._start_queue)
         self.download_button.pack(side="left")
 
+    def _install_clipboard_shortcuts(self) -> None:
+        self.entry_menu = tk.Menu(self, tearoff=False)
+        self.entry_menu.add_command(label="Cut", command=lambda: self._entry_event("<<Cut>>"))
+        self.entry_menu.add_command(label="Copy", command=lambda: self._entry_event("<<Copy>>"))
+        self.entry_menu.add_command(label="Paste", command=lambda: self._entry_event("<<Paste>>"))
+        self.entry_menu.add_separator()
+        self.entry_menu.add_command(label="Select All", command=self._select_all_focused_entry)
+
+        for entry in self.text_entries:
+            entry.bind("<Control-a>", self._select_all)
+            entry.bind("<Control-A>", self._select_all)
+            entry.bind("<Button-3>", self._show_entry_menu)
+
+        self.queue_tree.bind("<Control-c>", self._copy_selected_queue_rows)
+        self.queue_tree.bind("<Control-C>", self._copy_selected_queue_rows)
+        self.bind_all("<Control-c>", self._global_copy, add="+")
+        self.bind_all("<Control-C>", self._global_copy, add="+")
+        self.bind_all("<Control-v>", self._global_paste, add="+")
+        self.bind_all("<Control-V>", self._global_paste, add="+")
+        self.bind_all("<Control-x>", self._global_cut, add="+")
+        self.bind_all("<Control-X>", self._global_cut, add="+")
+        self.bind_all("<Shift-Insert>", self._global_paste, add="+")
+        self.bind_all("<Control-Insert>", self._global_copy, add="+")
+
+    def _focused_entry(self) -> ttk.Entry | None:
+        focused = self.focus_get()
+        if focused in self.text_entries:
+            return focused  # type: ignore[return-value]
+        return None
+
+    def _entry_event(self, virtual_event: str) -> None:
+        entry = self._focused_entry()
+        if entry is not None:
+            entry.event_generate(virtual_event)
+
+    def _entry_is_editable(self, entry: ttk.Entry) -> bool:
+        return str(entry.cget("state")) == "normal"
+
+    def _select_all(self, event: tk.Event) -> str:
+        widget = event.widget
+        if isinstance(widget, ttk.Entry):
+            widget.selection_range(0, tk.END)
+            widget.icursor(tk.END)
+            return "break"
+        return ""
+
+    def _select_all_focused_entry(self) -> None:
+        entry = self._focused_entry()
+        if entry is not None:
+            entry.selection_range(0, tk.END)
+            entry.icursor(tk.END)
+
+    def _show_entry_menu(self, event: tk.Event) -> str:
+        widget = event.widget
+        if isinstance(widget, ttk.Entry):
+            widget.focus_set()
+            editable = self._entry_is_editable(widget)
+            self.entry_menu.entryconfigure("Cut", state="normal" if editable else "disabled")
+            self.entry_menu.entryconfigure("Paste", state="normal" if editable else "disabled")
+            self.entry_menu.tk_popup(event.x_root, event.y_root)
+            return "break"
+        return ""
+
+    def _global_copy(self, event: tk.Event) -> str:
+        entry = self._focused_entry()
+        if entry is not None:
+            entry.event_generate("<<Copy>>")
+            return "break"
+        if self.focus_get() == self.queue_tree:
+            return self._copy_selected_queue_rows(event)
+        return ""
+
+    def _global_paste(self, event: tk.Event) -> str:
+        entry = self._focused_entry()
+        if entry is not None and self._entry_is_editable(entry):
+            entry.event_generate("<<Paste>>")
+            return "break"
+        return ""
+
+    def _global_cut(self, event: tk.Event) -> str:
+        entry = self._focused_entry()
+        if entry is not None and self._entry_is_editable(entry):
+            entry.event_generate("<<Cut>>")
+            return "break"
+        return ""
+
+    def _copy_selected_queue_rows(self, event: tk.Event | None = None) -> str:
+        selected = self.queue_tree.selection()
+        if not selected:
+            return "break"
+        rows = []
+        for item_id in selected:
+            values = self.queue_tree.item(item_id, "values")
+            rows.append("\t".join(str(value) for value in values))
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(rows))
+        return "break"
+
     def _choose_output(self) -> None:
         selected = filedialog.asksaveasfilename(
             title="เลือกตำแหน่งบันทึก",
@@ -149,6 +252,8 @@ class M3U8Downloader(tk.Tk):
         )
         if selected:
             self.output_path.set(selected)
+            self.output_entry.focus_set()
+            self.output_entry.icursor(tk.END)
 
     @staticmethod
     def _valid_url(value: str) -> bool:
@@ -382,12 +487,12 @@ class M3U8Downloader(tk.Tk):
         self.cancel_button.configure(state="disabled")
 
     def _set_running(self, running: bool) -> None:
-        state = "disabled" if running else "normal"
-        for widget in (
-            self.audio_entry, self.video_entry, self.output_entry, self.browse_button,
-            self.add_button, self.remove_button, self.clear_button, self.download_button,
-        ):
-            widget.configure(state=state)
+        entry_state = "readonly" if running else "normal"
+        for entry in self.text_entries:
+            entry.configure(state=entry_state)
+        button_state = "disabled" if running else "normal"
+        for widget in (self.browse_button, self.add_button, self.remove_button, self.clear_button, self.download_button):
+            widget.configure(state=button_state)
         self.cancel_button.configure(state="normal" if running else "disabled")
         if running:
             self.progress.configure(value=0)
