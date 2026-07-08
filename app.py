@@ -162,11 +162,6 @@ class M3U8Downloader(tk.Tk):
         self.queue_tree.bind("<Control-C>", self._copy_selected_queue_rows)
         self.bind_all("<Control-c>", self._global_copy, add="+")
         self.bind_all("<Control-C>", self._global_copy, add="+")
-        self.bind_all("<Control-v>", self._global_paste, add="+")
-        self.bind_all("<Control-V>", self._global_paste, add="+")
-        self.bind_all("<Control-x>", self._global_cut, add="+")
-        self.bind_all("<Control-X>", self._global_cut, add="+")
-        self.bind_all("<Shift-Insert>", self._global_paste, add="+")
         self.bind_all("<Control-Insert>", self._global_copy, add="+")
 
     def _focused_entry(self) -> ttk.Entry | None:
@@ -215,20 +210,6 @@ class M3U8Downloader(tk.Tk):
             return "break"
         if self.focus_get() == self.queue_tree:
             return self._copy_selected_queue_rows(event)
-        return ""
-
-    def _global_paste(self, event: tk.Event) -> str:
-        entry = self._focused_entry()
-        if entry is not None and self._entry_is_editable(entry):
-            entry.event_generate("<<Paste>>")
-            return "break"
-        return ""
-
-    def _global_cut(self, event: tk.Event) -> str:
-        entry = self._focused_entry()
-        if entry is not None and self._entry_is_editable(entry):
-            entry.event_generate("<<Cut>>")
-            return "break"
         return ""
 
     def _copy_selected_queue_rows(self, event: tk.Event | None = None) -> str:
