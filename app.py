@@ -470,7 +470,7 @@ class M3U8Downloader(tk.Tk):
         elif job.video_source:
             command.extend([
                 "-i", job.video_source,
-                "-map", "0:v:0", "-an",
+                "-map", "0:v:0", "-map", "0:a:0?",
             ])
         elif job.audio_source:
             command.extend([
