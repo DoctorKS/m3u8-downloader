@@ -22,7 +22,7 @@ DEFAULT_VIDEO_URL = (
     "6a3553f27c4cf6a3553f27c4cfhd.m3u8"
 )
 CANCELLED_RESULT = "__cancelled__"
-AUDIO_EXTENSIONS = (".m3u8", ".mp4")
+AUDIO_EXTENSIONS = (".m3u8", ".mp4", ".m4a", ".aac", ".mp3")
 VIDEO_EXTENSIONS = (".m3u8", ".mp4")
 
 
@@ -30,7 +30,7 @@ VIDEO_EXTENSIONS = (".m3u8", ".mp4")
 class DownloadJob:
     item_id: str
     audio_source: str | None
-    video_source: str
+    video_source: str | None
     output: Path
 
 
@@ -72,12 +72,14 @@ class M3U8Downloader(tk.Tk):
             row=0, column=0, columnspan=3, sticky="w", pady=(0, 12)
         )
 
-        ttk.Label(outer, text="เสียง (.m3u8/.mp4, เว้นว่างได้ถ้าวิดีโอมีเสียง)").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(outer, text="เสียง (ไม่บังคับ ถ้าต้องการเฉพาะวิดีโอ)").grid(row=1, column=0, sticky="w", pady=5)
         self.audio_entry = ttk.Entry(outer, textvariable=self.audio_url)
-        self.audio_entry.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(12, 0), pady=5)
+        self.audio_entry.grid(row=1, column=1, sticky="ew", padx=(12, 8), pady=5)
         self.text_entries.append(self.audio_entry)
+        self.audio_browse_button = ttk.Button(outer, text="เลือกเสียง...", command=self._choose_audio_file)
+        self.audio_browse_button.grid(row=1, column=2, sticky="ew", pady=5)
 
-        ttk.Label(outer, text="วิดีโอ (.m3u8/.mp4 URL หรือไฟล์)").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Label(outer, text="วิดีโอ (ไม่บังคับ ถ้าต้องการเฉพาะเสียง)").grid(row=2, column=0, sticky="w", pady=5)
         self.video_entry = ttk.Entry(outer, textvariable=self.video_url)
         self.video_entry.grid(row=2, column=1, sticky="ew", padx=(12, 8), pady=5)
         self.text_entries.append(self.video_entry)
@@ -229,16 +231,31 @@ class M3U8Downloader(tk.Tk):
         return "break"
 
     def _choose_output(self) -> None:
+        audio_only = bool(self.audio_url.get().strip()) and not self.video_url.get().strip()
+        default_extension = ".m4a" if audio_only else ".mp4"
         selected = filedialog.asksaveasfilename(
             title="เลือกตำแหน่งบันทึก",
-            defaultextension=".mp4",
-            filetypes=[("MP4 video", "*.mp4"), ("All files", "*.*")],
+            defaultextension=default_extension,
+            filetypes=[("M4A audio", "*.m4a"), ("MP4 video", "*.mp4"), ("All files", "*.*")],
             initialfile=Path(self.output_path.get()).name,
         )
         if selected:
             self.output_path.set(selected)
             self.output_entry.focus_set()
             self.output_entry.icursor(tk.END)
+
+    def _choose_audio_file(self) -> None:
+        selected = filedialog.askopenfilename(
+            title="เลือกไฟล์เสียง",
+            filetypes=[
+                ("Audio files", "*.m4a *.aac *.mp3 *.mp4"),
+                ("All files", "*.*"),
+            ],
+        )
+        if selected:
+            self.audio_url.set(selected)
+            self.audio_entry.focus_set()
+            self.audio_entry.icursor(tk.END)
 
     def _choose_video_file(self) -> None:
         selected = filedialog.askopenfilename(
@@ -273,23 +290,26 @@ class M3U8Downloader(tk.Tk):
     def _add_job(self, silent: bool = False) -> bool:
         audio_source = self.audio_url.get().strip()
         video_source = self.video_url.get().strip()
-        if not self._valid_source(video_source, VIDEO_EXTENSIONS):
+        if not audio_source and not video_source:
+            if not silent:
+                messagebox.showwarning(
+                    "ไม่มีแหล่งดาวน์โหลด",
+                    "กรุณากรอกเสียงหรือวิดีโออย่างน้อย 1 ช่อง",
+                )
+            return False
+        if video_source and not self._valid_source(video_source, VIDEO_EXTENSIONS):
             if not silent:
                 messagebox.showwarning(
                     "วิดีโอไม่ถูกต้อง",
-                    "กรุณากรอกลิงก์ http/https ที่ลงท้ายด้วย .m3u8/.mp4 หรือเลือกไฟล์ .mp4 ในเครื่อง",
+                    "ช่องวิดีโอต้องเป็นลิงก์ http/https ที่ลงท้ายด้วย .m3u8/.mp4 หรือไฟล์ .mp4 ในเครื่อง",
                 )
             return False
         if audio_source and not self._valid_source(audio_source, AUDIO_EXTENSIONS):
             if not silent:
                 messagebox.showwarning(
                     "เสียงไม่ถูกต้อง",
-                    "ช่องเสียงต้องเป็นลิงก์ http/https หรือไฟล์ที่ลงท้ายด้วย .m3u8/.mp4 หรือเว้นว่างถ้าวิดีโอมีเสียงอยู่แล้ว",
+                    "ช่องเสียงต้องเป็นลิงก์ http/https หรือไฟล์ .m3u8/.mp4/.m4a/.aac/.mp3",
                 )
-            return False
-        if not audio_source and not video_source.lower().endswith(".mp4"):
-            if not silent:
-                messagebox.showwarning("ต้องระบุเสียง", "ถ้าวิดีโอเป็น .m3u8 กรุณากรอกแหล่งเสียงด้วย")
             return False
 
         raw_output = self.output_path.get().strip()
@@ -298,8 +318,9 @@ class M3U8Downloader(tk.Tk):
                 messagebox.showwarning("ไม่ได้เลือกไฟล์", "กรุณาระบุไฟล์ปลายทาง")
             return False
         output = Path(raw_output).expanduser()
-        if output.suffix.lower() != ".mp4":
-            output = output.with_suffix(".mp4")
+        expected_suffix = ".m4a" if audio_source and not video_source else ".mp4"
+        if output.suffix.lower() != expected_suffix:
+            output = output.with_suffix(expected_suffix)
             self.output_path.set(str(output))
         if any(job.output.resolve() == output.resolve() for job in self.jobs.values()):
             if not silent:
@@ -309,7 +330,12 @@ class M3U8Downloader(tk.Tk):
         item_id = self.queue_tree.insert(
             "", "end", values=(len(self.jobs) + 1, str(output), "รอคิว", "0%")
         )
-        self.jobs[item_id] = DownloadJob(item_id, audio_source or None, video_source, output)
+        self.jobs[item_id] = DownloadJob(
+            item_id,
+            audio_source or None,
+            video_source or None,
+            output,
+        )
         self._renumber_queue()
         self._suggest_next_output(output)
         self.status_text.set("เพิ่มรายการเข้าคิวแล้ว")
@@ -413,7 +439,9 @@ class M3U8Downloader(tk.Tk):
         self.events.put(("status", f"รายการ {index}/{total}: กำลังตรวจสอบระยะเวลา..."))
         try:
             with ThreadPoolExecutor(max_workers=2) as executor:
-                sources = [job.video_source]
+                sources: list[str] = []
+                if job.video_source:
+                    sources.append(job.video_source)
                 if job.audio_source:
                     sources.append(job.audio_source)
                 durations = list(executor.map(self._probe_duration, sources))
@@ -425,20 +453,7 @@ class M3U8Downloader(tk.Tk):
             return CANCELLED_RESULT
 
         self.events.put(("progress", {"id": job.item_id, "percent": 0.0, "remaining": total_duration, "index": index, "total": total}))
-        command = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-stats_period", "1", "-progress", "pipe:1", "-y",
-            "-i", job.video_source,
-        ]
-        if job.audio_source:
-            command.extend([
-                "-i", job.audio_source,
-                "-map", "0:v:0", "-map", "1:a:0",
-                "-shortest",
-            ])
-        else:
-            command.extend(["-map", "0:v:0?", "-map", "0:a:0?"])
-        command.extend(["-c", "copy", "-movflags", "+faststart", str(temporary)])
+        command = self._build_ffmpeg_command(job, temporary)
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         try:
             self.process = subprocess.Popen(
@@ -478,6 +493,34 @@ class M3U8Downloader(tk.Tk):
             return str(exc)
         finally:
             self.process = None
+
+    @staticmethod
+    def _build_ffmpeg_command(job: DownloadJob, temporary: Path) -> list[str]:
+        command = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-stats_period", "1", "-progress", "pipe:1", "-y",
+        ]
+        if job.video_source and job.audio_source:
+            command.extend([
+                "-i", job.video_source,
+                "-i", job.audio_source,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-shortest",
+            ])
+        elif job.video_source:
+            command.extend([
+                "-i", job.video_source,
+                "-map", "0:v:0", "-an",
+            ])
+        elif job.audio_source:
+            command.extend([
+                "-i", job.audio_source,
+                "-map", "0:a:0", "-vn",
+            ])
+        else:
+            raise ValueError("ต้องมีแหล่งเสียงหรือวิดีโออย่างน้อยหนึ่งรายการ")
+        command.extend(["-c", "copy", "-movflags", "+faststart", str(temporary)])
+        return command
 
     @staticmethod
     def _probe_duration(url: str) -> float:
@@ -526,7 +569,7 @@ class M3U8Downloader(tk.Tk):
             entry.configure(state=entry_state)
         button_state = "disabled" if running else "normal"
         for widget in (
-            self.video_browse_button, self.browse_button, self.add_button,
+            self.audio_browse_button, self.video_browse_button, self.browse_button, self.add_button,
             self.remove_button, self.clear_button, self.download_button,
         ):
             widget.configure(state=button_state)
