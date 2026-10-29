@@ -22,8 +22,6 @@ DEFAULT_VIDEO_URL = (
     "6a3553f27c4cf6a3553f27c4cfhd.m3u8"
 )
 CANCELLED_RESULT = "__cancelled__"
-AUDIO_EXTENSIONS = (".m3u8", ".mp4", ".m4a", ".aac", ".mp3")
-VIDEO_EXTENSIONS = (".m3u8", ".mp4")
 
 
 @dataclass(frozen=True)
@@ -72,19 +70,15 @@ class M3U8Downloader(tk.Tk):
             row=0, column=0, columnspan=3, sticky="w", pady=(0, 12)
         )
 
-        ttk.Label(outer, text="เสียง (ไม่บังคับ ถ้าต้องการเฉพาะวิดีโอ)").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(outer, text="ลิงก์เสียง .m3u8 (ไม่บังคับ)").grid(row=1, column=0, sticky="w", pady=5)
         self.audio_entry = ttk.Entry(outer, textvariable=self.audio_url)
-        self.audio_entry.grid(row=1, column=1, sticky="ew", padx=(12, 8), pady=5)
+        self.audio_entry.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(12, 0), pady=5)
         self.text_entries.append(self.audio_entry)
-        self.audio_browse_button = ttk.Button(outer, text="เลือกเสียง...", command=self._choose_audio_file)
-        self.audio_browse_button.grid(row=1, column=2, sticky="ew", pady=5)
 
-        ttk.Label(outer, text="วิดีโอ (ไม่บังคับ ถ้าต้องการเฉพาะเสียง)").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Label(outer, text="ลิงก์วิดีโอ .m3u8 (ไม่บังคับ)").grid(row=2, column=0, sticky="w", pady=5)
         self.video_entry = ttk.Entry(outer, textvariable=self.video_url)
-        self.video_entry.grid(row=2, column=1, sticky="ew", padx=(12, 8), pady=5)
+        self.video_entry.grid(row=2, column=1, columnspan=2, sticky="ew", padx=(12, 0), pady=5)
         self.text_entries.append(self.video_entry)
-        self.video_browse_button = ttk.Button(outer, text="เลือก MP4...", command=self._choose_video_file)
-        self.video_browse_button.grid(row=2, column=2, sticky="ew", pady=5)
 
         ttk.Label(outer, text="บันทึกเป็น").grid(row=3, column=0, sticky="w", pady=5)
         self.output_entry = ttk.Entry(outer, textvariable=self.output_path)
@@ -244,48 +238,14 @@ class M3U8Downloader(tk.Tk):
             self.output_entry.focus_set()
             self.output_entry.icursor(tk.END)
 
-    def _choose_audio_file(self) -> None:
-        selected = filedialog.askopenfilename(
-            title="เลือกไฟล์เสียง",
-            filetypes=[
-                ("Audio files", "*.m4a *.aac *.mp3 *.mp4"),
-                ("All files", "*.*"),
-            ],
-        )
-        if selected:
-            self.audio_url.set(selected)
-            self.audio_entry.focus_set()
-            self.audio_entry.icursor(tk.END)
-
-    def _choose_video_file(self) -> None:
-        selected = filedialog.askopenfilename(
-            title="เลือกไฟล์วิดีโอ MP4",
-            filetypes=[("MP4 video", "*.mp4"), ("All files", "*.*")],
-        )
-        if selected:
-            self.video_url.set(selected)
-            self.video_entry.focus_set()
-            self.video_entry.icursor(tk.END)
-
     @staticmethod
-    def _valid_http_source(value: str, extensions: tuple[str, ...]) -> bool:
+    def _valid_m3u8_url(value: str) -> bool:
         parsed = urlparse(value.strip())
         return (
             parsed.scheme in {"http", "https"}
             and bool(parsed.netloc)
-            and parsed.path.lower().endswith(extensions)
+            and parsed.path.lower().endswith(".m3u8")
         )
-
-    @staticmethod
-    def _valid_local_source(value: str, extensions: tuple[str, ...]) -> bool:
-        path = Path(value.strip()).expanduser()
-        return path.suffix.lower() in extensions and path.is_file()
-
-    @classmethod
-    def _valid_source(cls, value: str, extensions: tuple[str, ...]) -> bool:
-        if not value.strip():
-            return False
-        return cls._valid_http_source(value, extensions) or cls._valid_local_source(value, extensions)
 
     def _add_job(self, silent: bool = False) -> bool:
         audio_source = self.audio_url.get().strip()
@@ -297,18 +257,18 @@ class M3U8Downloader(tk.Tk):
                     "กรุณากรอกเสียงหรือวิดีโออย่างน้อย 1 ช่อง",
                 )
             return False
-        if video_source and not self._valid_source(video_source, VIDEO_EXTENSIONS):
+        if video_source and not self._valid_m3u8_url(video_source):
             if not silent:
                 messagebox.showwarning(
                     "วิดีโอไม่ถูกต้อง",
-                    "ช่องวิดีโอต้องเป็นลิงก์ http/https ที่ลงท้ายด้วย .m3u8/.mp4 หรือไฟล์ .mp4 ในเครื่อง",
+                    "ช่องวิดีโอต้องเป็นลิงก์ http/https ที่ลงท้ายด้วย .m3u8",
                 )
             return False
-        if audio_source and not self._valid_source(audio_source, AUDIO_EXTENSIONS):
+        if audio_source and not self._valid_m3u8_url(audio_source):
             if not silent:
                 messagebox.showwarning(
                     "เสียงไม่ถูกต้อง",
-                    "ช่องเสียงต้องเป็นลิงก์ http/https หรือไฟล์ .m3u8/.mp4/.m4a/.aac/.mp3",
+                    "ช่องเสียงต้องเป็นลิงก์ http/https ที่ลงท้ายด้วย .m3u8",
                 )
             return False
 
@@ -569,7 +529,7 @@ class M3U8Downloader(tk.Tk):
             entry.configure(state=entry_state)
         button_state = "disabled" if running else "normal"
         for widget in (
-            self.audio_browse_button, self.video_browse_button, self.browse_button, self.add_button,
+            self.browse_button, self.add_button,
             self.remove_button, self.clear_button, self.download_button,
         ):
             widget.configure(state=button_state)
